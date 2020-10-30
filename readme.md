@@ -23,13 +23,12 @@ This implementation relies on records and pointers.
 So far, I see no way to implement what I want using standard objects.
 The creation and destruction of objects uses a shared heap of memory.
 There is no way to place objects on the call stack.
-The good old "object" is declared deprecated and support 
-for new features for this type is not supported.
+The good old "object" is declared deprecated and adding new features for this type is not supported.
 
-## Region-based memory management
+## Typed region-based memory management
 This collection implementation relies on the mechanism
-memory management based on regions.
-The use of regions makes it possible to simplify the solution of a number of tasks:
+memory management based on typed memory regions.
+The use of typed memory regions makes it possible to simplify the solution of a number of tasks:
  - Memory release code.
 
 The task of freeing memory becomes easier and
@@ -40,21 +39,19 @@ It is a well-known fact that a standard memory manager must be thread-safe.
 Only one thread can access the memory manager at any given time.
 Allocating and freeing memory uses mutual exclusion mechanisms and is not a fast operation,
 especially if the memory is heavily defragmented.
-When using a separate memory region, we refer to the standard memory manager only
-at the moment of increasing the required memory and deleting the structure after its use.
+When using a separate typed memory region, we refer to the standard memory manager only at the moment of increasing the required memory and deleting the structure after its use.
 
 ## Standard data structures
 Support for basic structures with the ability to specify a memory allocator.
 The elements of the list are accessed through pointers.
-As a rule, the memory for values ​​is located in the so-called segmented memory region, which will not be moved during operation.
+As a rule, the memory for values is located in the so-called segmented memory region, which will not be moved during operation.
 If it is necessary to increase the memory of a region, an additional memory segment is allocated for it.
 This means that we can access data items located in such a region through a pointer.
   
 For arrays, we use the so-called contiguous memory region.
 Data items are accessed through an index.
 If necessary, increase the memory of the region,
-a segment with a large size is allocated for it and
-data from the current memory segment is copied to the new segment.
+a segment with a large size is allocated for it and data from the current memory segment is copied to the new segment.
 After copying the data, the old segment will be deleted.
  
 Ultimately, working through pointers is very convenient and efficient.
@@ -67,19 +64,20 @@ The Delphi compiler will not generate code for overridden methods.
 At the place of the method call, there will be a direct call to the aggregate structure method.
 
 ### Generic lists and dictionaries
-  - `TsgList <T>` Generic List of Values
-  - `TsgRecordList <T>` Generic List of Values accessed by pointer
-  - `TsgLinkedList <T>` Generic Bidirectional Linked List
-  - `TsgForwardList <T>` Generic Unidirectional Linked List
-  - `TsgHashMap <Key, T>` Generic Unordered dictionary
-  - `TsgMap <Key, T>` Generic Dictionary based on 2-3 tree
-  - `TsgSet <Key>` Generic Set based on 2-3 trees
+ - `TsgPair<T1, T2>, TsgTrio<T1, T2, T3>, TsgQuad<T1, T2, T3, T4> ...` Generic Tuples  
+ - `TsgList<T>` Generic List of Values
+ - `TsgRecordList<T>` Generic List of Values accessed by pointer
+ - `TsgLinkedList<T>` Generic Bidirectional Linked List
+ - `TsgForwardList<T>` Generic Unidirectional Linked List
+ - `TsgHashMap<Key, T>` Generic Unordered dictionary
+ - `TsgMap<Key, T>` Generic Ordered Dictionary based on 2-3 tree
+ - `TsgSet<Key>` Generic Set based on 2-3 trees
  
 ### Untyped data structures
-  - `TsgPointerArray` Untyped List of Pointers
-  - `TsgPointerList` Untyped List of Values accessed by pointer
-  - `TCustomLinkedList` Untyped Bidirectional Linked List
-  - `TsgCustomTree` Untyped Dictionary based on 2-3 trees 
+ - `TsgPointerArray` Untyped List of Pointers
+ - `TsgPointerList` Untyped List of Values accessed by pointer
+ - `TCustomLinkedList` Untyped Bidirectional Linked List
+ - `TsgCustomTree` Untyped Dictionary based on 2-3 trees 
 
 ## Iterators
 We've started adding Delphi iterators.
@@ -92,8 +90,7 @@ This turned out to be quite a pleasant surprise for me!
 ## Memory allocator
 The ability to specify a memory allocator also means that we work mainly with records.
 Typically, some structure uses one or more memory regions, which is a simple memory manager.
-After using the structure, we have the opportunity
-return all the memory occupied by freeing up the memory region.
+After using the structure, we have the opportunity return all the memory occupied by freeing up the memory region.
 We have limitations using inheritance.
 In some cases, we can replace inheritance with aggregation and helpers.
 Typically for implementing collections, this is not a problem.
