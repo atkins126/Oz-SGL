@@ -179,8 +179,31 @@ type
     procedure _MakeTrio;
     procedure _MakeQuad;
     procedure _Cat;
+    procedure _Add;
+    procedure _Insert;
     procedure _Assign;
     procedure _AssignPart;
+  end;
+
+{$EndRegion}
+
+{$Region 'TestTsgArray'}
+
+  TestTsgArray = class(TTestCase)
+  public
+    Meta: TsgItemMeta;
+    List: TsgArray<TTestRecord>;
+    Region: TMemoryRegion;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure TestAdd;
+    procedure TestDelete;
+    procedure TestInsert;
+    procedure TestRemove;
+    procedure TestExchange;
+    procedure TestSort;
+    procedure TestReverse;
   end;
 
 {$EndRegion}
@@ -785,7 +808,7 @@ var
   i: Integer;
 begin
   // Byte
-  te.Init<Byte>(0);
+  te.Init<Byte>;
   CheckTrue(te.Meta.ItemSize = 1);
   CheckTrue(te.Meta.h.TypeKind = TTypeKind.tkInteger);
   offset := te.NextTupleOffset(False);
@@ -799,7 +822,7 @@ begin
   CheckTrue(b1 = 75);
 
   // Word
-  te.Init<Word>(0);
+  te.Init<Word>;
   CheckTrue(te.Meta.ItemSize = 2);
   CheckTrue(te.Meta.h.TypeKind = TTypeKind.tkInteger);
   offset := te.NextTupleOffset(False);
@@ -813,7 +836,7 @@ begin
   CheckTrue(w1 = 705);
 
   // Integer
-  te.Init<Integer>(0);
+  te.Init<Integer>;
   CheckTrue(te.Meta.ItemSize = 4);
   offset := te.NextTupleOffset(False);
   CheckTrue(offset = 4);
@@ -839,7 +862,7 @@ begin
   CheckTrue(Integer(ptr1^) = 70564);
 
   // Double
-  te.Init<Double>(0);
+  te.Init<Double>;
   CheckTrue(te.Meta.ItemSize = 8);
   offset := te.NextTupleOffset(False);
   CheckTrue(offset = 8);
@@ -865,7 +888,7 @@ begin
   CheckTrue(SameValue(Double(ptr1^), 70564.567));
 
   // string
-  te.Init<string>(0);
+  te.Init<string>;
   CheckTrue(te.Meta.ItemSize = 4);
   offset := te.NextTupleOffset(False);
   CheckTrue(offset = 4);
@@ -880,7 +903,7 @@ begin
   CheckTrue(s1 = '70564');
 
   // TPerson
-  te.Init<TPerson>(0);
+  te.Init<TPerson>;
   CheckTrue(te.Meta.ItemSize = 8);
   offset := te.NextTupleOffset(False);
   CheckTrue(offset = 8);
@@ -971,6 +994,11 @@ begin
 end;
 
 procedure TsgTupleTest._Cat;
+begin
+
+end;
+
+procedure TsgTupleTest._Add;
 var
   Tuple: TsgTupleMeta;
   te0, te1, te2: PsgTupleElementMeta;
@@ -985,7 +1013,7 @@ begin
   CheckTrue(te1.Size = 4);
   CheckTrue(te1.Offset = 24);
   CheckTrue(Tuple.Size = 28);
-  Tuple.Cat<Byte>(nil, True);
+  Tuple.Add<Byte>(nil, True);
   te0 := Tuple.Get(0);
   te1 := Tuple.Get(1);
   te2 := Tuple.Get(2);
@@ -994,6 +1022,34 @@ begin
   CheckTrue(te1.Size = 4);
   CheckTrue(te1.Offset = 24);
   CheckTrue(te2.Size = 1);
+  CheckTrue(te2.Offset = 28);
+  CheckTrue(Tuple.Size = 32);
+end;
+
+procedure TsgTupleTest._Insert;
+var
+  Tuple: TsgTupleMeta;
+  te0, te1, te2: PsgTupleElementMeta;
+begin
+  // create a pair without alignment
+  Tuple.MakePair<TVector, string>(nil, True);
+  // check total size, element addresses and offsets
+  te0 := Tuple.Get(0);
+  te1 := Tuple.Get(1);
+  CheckTrue(te0.Size = 24);
+  CheckTrue(te0.Offset = 0);
+  CheckTrue(te1.Size = 4);
+  CheckTrue(te1.Offset = 24);
+  CheckTrue(Tuple.Size = 28);
+  Tuple.Insert<Byte>(nil, True);
+  te0 := Tuple.Get(0);
+  te1 := Tuple.Get(1);
+  te2 := Tuple.Get(2);
+  CheckTrue(te0.Size = 1);
+  CheckTrue(te0.Offset = 0);
+  CheckTrue(te1.Size = 24);
+  CheckTrue(te1.Offset = 28);
+  CheckTrue(te2.Size = 4);
   CheckTrue(te2.Offset = 28);
   CheckTrue(Tuple.Size = 32);
 end;
@@ -1042,6 +1098,75 @@ end;
 procedure TsgTupleTest._AssignPart;
 begin
 
+end;
+
+{$EndRegion}
+
+{$Region 'TestTsgArray'}
+
+procedure TestTsgArray.SetUp;
+begin
+  Meta.Init<TTestRecord>([rfRangeCheck], TRemoveAction.HoldValue);
+  Region.Init(Meta, 4096);
+  List.Init(Region, 4);
+end;
+
+procedure TestTsgArray.TearDown;
+begin
+  List.Free;
+  Region.Free;
+end;
+
+procedure TestTsgArray.TestAdd;
+var
+  i, j: Integer;
+  a, b: TTestRecord;
+  p: PTestRecord;
+begin
+  for i := 1 to ItemsCount do
+  begin
+    a.Init(i, i + 1);
+    a.e.tag := i;
+    List.Add^ := a;
+    CheckTrue(List.Count = Cardinal(i));
+    // считать и проверить содержимое
+    p := List.Items[i - 1];
+    CheckTrue(p.v = i);
+    CheckTrue(a.Equals(p^));
+    // проверить все ранее добавленные значения
+    for j := 1 to i do
+    begin
+      a.Init(j, j + 1);
+      a.e.tag := j;
+      p := List.Items[j - 1];
+      CheckTrue(p.v = j);
+      CheckTrue(a.Equals(p^));
+    end;
+  end;
+end;
+
+procedure TestTsgArray.TestDelete;
+begin
+end;
+
+procedure TestTsgArray.TestInsert;
+begin
+end;
+
+procedure TestTsgArray.TestRemove;
+begin
+end;
+
+procedure TestTsgArray.TestExchange;
+begin
+end;
+
+procedure TestTsgArray.TestSort;
+begin
+end;
+
+procedure TestTsgArray.TestReverse;
+begin
 end;
 
 {$EndRegion}
@@ -2250,6 +2375,8 @@ end;
 {$EndRegion}
 
 initialization
+
+  RegisterTest(TestTsgArray.Suite);
   RegisterTest(TsgTupleTest.Suite);
   RegisterTest(TestTsgHashMap.Suite);
 
