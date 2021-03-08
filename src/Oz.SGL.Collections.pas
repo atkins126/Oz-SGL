@@ -22,7 +22,7 @@ interface
 
 uses
   System.Classes, System.SysUtils, System.Math,
-  Oz.SGL.Heap, Oz.SGL.HandleManager;
+  Oz.SGL.Heap, Oz.SGL.HandleManager, Oz.SGL.Hash;
 
 {$EndRegion}
 
@@ -298,6 +298,27 @@ type
     property Count: Integer read GetCount write SetCount;
     property Items[Index: Integer]: T read GetItem write SetItem; default;
     property List: PItems read GetItems;
+  end;
+
+{$EndRegion}
+
+{$Region 'TsgStack<T: record>'}
+
+  TsgStack<T: record> = record
+  strict private
+    FList: TsgList<T>;
+    function GetItem(Index: Integer): T; inline;
+    function GetCount: Integer; inline;
+  public
+    constructor From(Capacity: Integer);
+    procedure Free; inline;
+    procedure Clear; inline;
+    function Peek: T;
+    procedure Push(Item: T);
+    function Pop: T;
+    function Empty: Boolean;
+    property Count: Integer read GetCount;
+    property Items[Index: Integer]: T read GetItem;
   end;
 
 {$EndRegion}
@@ -723,11 +744,23 @@ type
 {$Region 'TsgCustomHashMap: Untyped Unordered dictionary'}
 
   PsgCustomHashMap = ^TsgCustomHashMap;
+
+  TsgCustomHashMapIterator = record
+  private
+    index: Integer;
+    map: PsgCustomHashMap;
+    procedure Init(map: PsgCustomHashMap; idx: Integer);
+  public
+    class operator Equal(const a, b: TsgCustomHashMapIterator): Boolean; inline;
+    class operator NotEqual(const a, b: TsgCustomHashMapIterator): Boolean; inline;
+    procedure Next; inline;
+    function GetKey: Pointer; inline;
+    function GetValue: Pointer; inline;
+  end;
+
   TsgCustomHashMap = record
-  public type
-    TKeyHash = function(k: Pointer): Cardinal;
-    TKeyEquals = function(a, b: Pointer): Boolean;
-  private type
+  type
+    TAssignPair = reference to procedure(pair: Pointer);
     // Collision list element
     PCollision = ^TCollision;
     TCollision = record
@@ -739,38 +772,32 @@ type
     TEntry = record
       root: PCollision;
     end;
-    TIterator = record
-    private
-      index: Integer;
-      map: PsgCustomHashMap;
-      procedure Init(map: PsgCustomHashMap; idx: Integer);
-    public
-      procedure Next; inline;
-      function GetKey: Pointer; inline;
-      function GetValue: Pointer; inline;
-    end;
   private
     FEntries: PUnbrokenRegion;
     FCollisions: PSegmentedRegion;
     FPair: PsgTupleMeta;
-    FHash: THashProc;
-    FEquals: TEqualsFunc;
+    FHasher: TsgHasher;
+    function GetCount: Integer;
     // Get a prime number for the expected number of items
     function GetEntries(ExpectedSize: Integer): Integer;
   public
-    constructor From(PairMeta: PsgTupleMeta; ExpectedSize: Integer;
-      HashKey: THashProc; Equals: TEqualsFunc);
+    constructor From(PairMeta: PsgTupleMeta; ExpectedSize: Integer; Hasher: PsgHasher);
     procedure Free;
     // Already initialized
     function Valid: Boolean; inline;
     // Find item by key
     function Find(key: Pointer): Pointer;
-    // Insert pair
+    // Inserts element into the container, if the container doesn't already
+    // contain an element with an equivalent key.
     function Insert(pair: Pointer): Pointer;
+    // Insert an element or assigns to the current element if the key already exists
+    function InsertOrAssign(pair: Pointer): Pointer;
+    // Return a temporary variable
+    function GetTemporaryPair: Pointer; inline;
     // Return the iterator to the beginning
-    function Begins: TIterator;
+    function Begins: TsgCustomHashMapIterator;
     // Next to the last one.
-    function Ends: TIterator;
+    function Ends: TsgCustomHashMapIterator;
   end;
 
 {$EndRegion}
@@ -789,14 +816,15 @@ type
   type
     PItem = ^T;
     PKey = ^Key;
+    TPair = TsgPair<Key, T>;
+    PPair = ^TPair;
   private
-    it: TsgCustomHashMap.TIterator;
+    it: TsgCustomHashMapIterator;
   public
-    class operator Equal(
-      const a, b: TsgHashMapIterator<Key, T>): Boolean; inline;
-    class operator NotEqual(
-      const a, b: TsgHashMapIterator<Key, T>): Boolean; inline;
-    procedure Next;
+    class operator Equal(const a, b: TsgHashMapIterator<Key, T>): Boolean; inline;
+    class operator NotEqual(const a, b: TsgHashMapIterator<Key, T>): Boolean; inline;
+    procedure Next; inline;
+    function GetPair: PPair; inline;
     function GetKey: PKey; inline;
     function GetValue: PItem; inline;
   end;
@@ -804,23 +832,29 @@ type
   // Has constant lookup time using memory pool
   TsgHashMap<Key, T> = record
   type
-    TMapPair = TsgPair<Key, T>;
-    PMapPair = ^TMapPair;
+    TPair = TsgPair<Key, T>;
+    PPair = ^TPair;
   private
     FMap: TsgCustomHashMap;
+    function GetCount: Integer; inline;
   public
-    constructor From(ExpectedSize: Integer;
-      HashKey: THashProc; Equals: TEqualsFunc; FreePair: TFreeProc);
+    constructor From(ExpectedSize: Integer; Hasher: PsgHasher; FreePair: TFreeProc = nil);
     procedure Free; inline;
     // Finds an element with key equivalent to key.
-    function Find(const k: Key): PMapPair; inline;
+    function Find(const k: Key): PPair; inline;
     // Inserts element into the container, if the container doesn't already
     // contain an element with an equivalent key.
-    function Insert(const pair: TsgPair<Key, T>): PMapPair; inline;
+    function Insert(const pair: TsgPair<Key, T>): PPair; inline;
+    // Insert an element or assigns to the current element if the key already exists
+    function InsertOrAssign(const pair: TsgPair<Key, T>): PPair; inline;
+    // Return a temporary variable
+    function GetTemporaryPair: PPair; inline;
     // Return the iterator to the beginning
     function Begins: TsgHashMapIterator<Key, T>; inline;
     // Next to the last one.
     function Ends: TsgHashMapIterator<Key, T>; inline;
+    // Return the number of items
+    property Count: Integer read GetCount;
   end;
 
 {$EndRegion}
@@ -1936,6 +1970,56 @@ end;
 
 {$EndRegion}
 
+{$Region 'TsgStack<T>'}
+
+constructor TsgStack<T>.From(Capacity: Integer);
+begin
+  FList := TsgList<T>.From(Capacity);
+end;
+
+procedure TsgStack<T>.Free;
+begin
+  FList.Free;
+end;
+
+procedure TsgStack<T>.Clear;
+begin
+  FList.Clear;
+end;
+
+function TsgStack<T>.Peek: T;
+begin
+  Result := FList.GetItem(Count - 1);
+end;
+
+procedure TsgStack<T>.Push(Item: T);
+begin
+  FList.Add(Item);
+end;
+
+function TsgStack<T>.Pop: T;
+begin
+  Result := GetItem(Count - 1);
+  FList.Count := FList.Count - 1;
+end;
+
+function TsgStack<T>.Empty: Boolean;
+begin
+  Result := Count = 0;
+end;
+
+function TsgStack<T>.GetItem(Index: Integer): T;
+begin
+  Result := FList.GetItem(Index);
+end;
+
+function TsgStack<T>.GetCount: Integer;
+begin
+  Result := FList.GetCount;
+end;
+
+{$EndRegion}
+
 {$Region 'TsgPointerArray.TEnumerator'}
 
 constructor TsgPointerArray.TEnumerator.From(const Pointers: TsgPointerArray);
@@ -2990,6 +3074,11 @@ begin
   it.Next;
 end;
 
+function TsgHashMapIterator<Key, T>.GetPair: PPair;
+begin
+  Result := PPair(it.GetKey);
+end;
+
 function TsgHashMapIterator<Key, T>.GetKey: PKey;
 begin
   Result := PKey(it.GetKey);
@@ -3013,23 +3102,33 @@ end;
 
 {$Region 'TsgCustomHashMap.TIterator'}
 
-procedure TsgCustomHashMap.TIterator.Init(map: PsgCustomHashMap; idx: Integer);
+procedure TsgCustomHashMapIterator.Init(map: PsgCustomHashMap; idx: Integer);
 begin
   Self.index := idx;
   Self.map := map;
 end;
 
-function TsgCustomHashMap.TIterator.GetKey: Pointer;
+class operator TsgCustomHashMapIterator.Equal(const a, b: TsgCustomHashMapIterator): Boolean;
+begin
+  Result := a.index = b.index;
+end;
+
+class operator TsgCustomHashMapIterator.NotEqual(const a, b: TsgCustomHashMapIterator): Boolean;
+begin
+  Result := a.index <> b.index;
+end;
+
+function TsgCustomHashMapIterator.GetKey: Pointer;
 begin
   Result := PByte(map.FCollisions.GetItemPtr(index)) + sizeof(Pointer);
 end;
 
-function TsgCustomHashMap.TIterator.GetValue: Pointer;
+function TsgCustomHashMapIterator.GetValue: Pointer;
 begin
   Result := PByte(GetKey) + map.FPair.Get(1).Offset;
 end;
 
-procedure TsgCustomHashMap.TIterator.Next;
+procedure TsgCustomHashMapIterator.Next;
 begin
   Inc(index);
 end;
@@ -3039,7 +3138,7 @@ end;
 {$Region 'TsgCustomHashMap'}
 
 constructor TsgCustomHashMap.From(PairMeta: PsgTupleMeta; ExpectedSize: Integer;
-  HashKey: THashProc; Equals: TEqualsFunc);
+  Hasher: PsgHasher);
 var
   EntryMeta, CollisionMeta: PsgItemMeta;
   TabSize: Integer;
@@ -3049,11 +3148,18 @@ begin
   TabSize := GetEntries(ExpectedSize);
   FEntries.Count := TabSize;
   FPair := PairMeta;
-  FHash := HashKey;
-  FEquals := Equals;
+  if Hasher = nil then
+    FHasher := TsgHasher.From(PairMeta.Get(0).Meta)
+  else
+    FHasher := Hasher^;
   CollisionMeta := SysCtx.CreateMeta<TCollision>;
   CollisionMeta.ItemSize := sizeof(TCollision) + FPair.Size;
   FCollisions := SysCtx.CreateRegion(CollisionMeta);
+end;
+
+function TsgCustomHashMap.GetCount: Integer;
+begin
+  Result := FCollisions.Count;
 end;
 
 function TsgCustomHashMap.GetEntries(ExpectedSize: Integer): Integer;
@@ -3086,14 +3192,14 @@ end;
 
 function TsgCustomHashMap.Find(key: Pointer): Pointer;
 var
-  eidx: Cardinal;
+  eidx: Integer;
   p: PCollision;
 begin
-  eidx := FHash(key^) mod Cardinal(FEntries.Count);
+  eidx := FHasher.GetHash(key) mod FEntries.Count;
   p := PCollision(FEntries.GetItemPtr(eidx));
   while p <> nil do
   begin
-    if FEquals(key, p.GetPairRef) then
+    if FHasher.Equals(key, p.GetPairRef) then
     begin
       Result := p.GetPairRef;
       exit;
@@ -3109,12 +3215,12 @@ var
   entry: pEntry;
   p, n: PCollision;
 begin
-  eidx := FHash(pair^) mod Cardinal(FEntries.Count);
+  eidx := FHasher.GetHash(pair) mod FEntries.Count;
   entry := FEntries.GetItemPtr(eidx);
   p := entry.root;
   while p <> nil do
   begin
-    if FEquals(@pair, p.GetPairRef) then
+    if FHasher.Equals(@pair, p.GetPairRef) then
       exit(p.GetPairRef);
     p := p.Next;
   end;
@@ -3126,12 +3232,43 @@ begin
   Result := n.GetPairRef;
 end;
 
-function TsgCustomHashMap.Begins: TIterator;
+function TsgCustomHashMap.InsertOrAssign(pair: Pointer): Pointer;
+var
+  eidx: Integer;
+  entry: pEntry;
+  p, n: PCollision;
+begin
+  eidx := FHasher.GetHash(pair) mod FEntries.Count;
+  entry := FEntries.GetItemPtr(eidx);
+  p := entry.root;
+  while p <> nil do
+  begin
+    if FHasher.Equals(@pair, p.GetPairRef) then
+    begin
+      FPair.Assign(p.GetPairRef, pair);
+      exit(p.GetPairRef);
+    end;
+    p := p.Next;
+  end;
+  // Insert collision at the beginning of the list
+  n := FCollisions.AddItem;
+  n.Next := entry.root;
+  FPair.Assign(n.GetPairRef, pair);
+  entry.root := n;
+  Result := n.GetPairRef;
+end;
+
+function TsgCustomHashMap.GetTemporaryPair: Pointer;
+begin
+  Result := FCollisions.Region.GetTemporary;
+end;
+
+function TsgCustomHashMap.Begins: TsgCustomHashMapIterator;
 begin
   Result.Init(@Self, 0);
 end;
 
-function TsgCustomHashMap.Ends: TIterator;
+function TsgCustomHashMap.Ends: TsgCustomHashMapIterator;
 begin
   Result.Init(@Self, FCollisions.Count);
 end;
@@ -3141,13 +3278,13 @@ end;
 {$Region 'TsgHashMap<Key, T>'}
 
 constructor TsgHashMap<Key, T>.From(ExpectedSize: Integer;
-  HashKey: THashProc; Equals: TEqualsFunc; FreePair: TFreeProc);
+  Hasher: PsgHasher; FreePair: TFreeProc);
 var
   meta: PsgTupleMeta;
 begin
   meta := SysCtx.CreateTupleMeta;
   meta.MakePair<Key, T>(FreePair);
-  FMap := TsgCustomHashMap.From(meta, ExpectedSize, HashKey, Equals);
+  FMap := TsgCustomHashMap.From(meta, ExpectedSize, Hasher);
 end;
 
 procedure TsgHashMap<Key, T>.Free;
@@ -3155,14 +3292,29 @@ begin
   FMap.Free;
 end;
 
-function TsgHashMap<Key, T>.Find(const k: Key): PMapPair;
+function TsgHashMap<Key, T>.GetTemporaryPair: PPair;
 begin
-  Result := PMapPair(FMap.Find(@k));
+  Result := PPair(FMap.GetTemporaryPair);
 end;
 
-function TsgHashMap<Key, T>.Insert(const pair: TsgPair<Key, T>): PMapPair;
+function TsgHashMap<Key, T>.GetCount: Integer;
 begin
-  Result := PMapPair(FMap.Insert(@pair));
+  Result := FMap.GetCount;
+end;
+
+function TsgHashMap<Key, T>.Find(const k: Key): PPair;
+begin
+  Result := PPair(FMap.Find(@k));
+end;
+
+function TsgHashMap<Key, T>.Insert(const pair: TsgPair<Key, T>): PPair;
+begin
+  Result := PPair(FMap.Insert(@pair));
+end;
+
+function TsgHashMap<Key, T>.InsertOrAssign(const pair: TsgPair<Key, T>): PPair;
+begin
+  Result := PPair(FMap.InsertOrAssign(@pair));
 end;
 
 function TsgHashMap<Key, T>.Begins: TsgHashMapIterator<Key, T>;
@@ -3816,6 +3968,8 @@ begin
         v := string(Arg.VUnicodeString);
       vtChar, vtWideChar:
         v := Char(Arg.VChar);
+      vtAnsiString:
+        v := string(Arg.VString);
       else
         raise EsgError.Create(EsgError.InvalidParameters);
     end;

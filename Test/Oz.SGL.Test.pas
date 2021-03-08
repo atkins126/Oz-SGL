@@ -26,12 +26,14 @@ uses
   System.UITypes,
   System.Classes,
   System.Math,
+  System.Generics.Defaults,
   System.Diagnostics,
   TestFramework,
 
   // Oz.SGL
   Oz.SGL.HandleManager,
   Oz.SGL.Heap,
+  Oz.SGL.Hash,
   Oz.SGL.Collections;
 
 {$EndRegion}
@@ -469,15 +471,30 @@ type
 
 {$EndRegion}
 
-{$Region 'TestTsgHashMap'}
+{$Region 'TsgHasherTest'}
+
+  TsgHasherTest = class(TTestCase)
+  published
+    procedure TestByte;
+    procedure TestWord;
+    procedure TestInt32;
+    procedure TestInt64;
+    procedure TestString;
+    procedure TestWString;
+    procedure TestAnsiString;
+    procedure TestShortString;
+  end;
+
+{$EndRegion}
+
+{$Region 'TsgHashMapTest: Test methods for class TsgHashMap'}
 
 type
   THashMapPair = TsgPair<TVector, Integer>;
   PHashMapPair = ^THashMapPair;
   TIter = TsgHashMapIterator<TVector, Integer>;
 
-  // Test methods for class TsgHashMap
-  TestTsgHashMap = class(TTestCase)
+  TsgHashMapTest = class(TTestCase)
   strict private
     Map: TsgHashMap<TVector, Integer>;
   public
@@ -485,7 +502,9 @@ type
     procedure TearDown; override;
     procedure GenPair(i: Integer; var pair: TsgPair<TVector, Integer>);
   published
+    procedure TestTemporaryPair;
     procedure TestInsert;
+    procedure TestInsertOrUpdate;
     procedure TestFind;
     procedure TestPairIterator;
     procedure TestKeyIterator;
@@ -494,10 +513,10 @@ type
 
 {$EndRegion}
 
-{$Region 'TestTsgMap'}
+{$Region 'TsgMapTest'}
 
   // Test methods for class TsgMap
-  TestTsgMap = class(TTestCase)
+  TsgMapTest = class(TTestCase)
   type
     TMapPair = TsgPair<TPerson, Integer>;
     PMapPair = ^TMapPair;
@@ -515,9 +534,9 @@ type
 
 {$EndRegion}
 
-{$Region 'TestTsgSet'}
+{$Region 'TsgSetTest'}
 
-  TestTsgSet = class(TTestCase)
+  TsgSetTest = class(TTestCase)
   strict private
     FSet: TsgSet<TPerson>;
     snn: Integer;
@@ -4194,11 +4213,162 @@ end;
 
 {$EndRegion}
 
-{$Region 'TestTsgHashMap'}
+{$Region 'TsgHasherTest'}
 
-function VectorHash(const Value): Cardinal;
+procedure TsgHasherTest.TestByte;
+var
+  hasher: TsgHasher;
+  meta: TsgItemMeta;
+  a, b, c: Byte;
 begin
-  Result := TVector(Value).Hash;
+  meta.Init<Byte>;
+  hasher := TsgHasher.From(@meta);
+  a := 123;
+  b := 123;
+  c := 56;
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+end;
+
+procedure TsgHasherTest.TestWord;
+var
+  hasher: TsgHasher;
+  meta: TsgItemMeta;
+  a, b, c: Word;
+begin
+  meta.Init<Word>;
+  hasher := TsgHasher.From(@meta);
+  a := 123;
+  b := 123;
+  c := 456;
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+end;
+
+procedure TsgHasherTest.TestInt32;
+var
+  hasher: TsgHasher;
+  meta: TsgItemMeta;
+  a, b, c: Integer;
+begin
+  meta.Init<Integer>;
+  hasher := TsgHasher.From(@meta);
+  a := 123;
+  b := 123;
+  c := 456;
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+end;
+
+procedure TsgHasherTest.TestInt64;
+var
+  hasher: TsgHasher;
+  meta: TsgItemMeta;
+  a, b, c: Int64;
+begin
+  meta.Init<Int64>;
+  hasher := TsgHasher.From(@meta);
+  a := 123456;
+  b := 123456;
+  c := 456471456;
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+end;
+
+procedure TsgHasherTest.TestShortString;
+var
+  hasher: TsgHasher;
+  meta: TsgItemMeta;
+  a, b, c: string[40];
+begin
+  meta.Init<ShortString>;
+  hasher := TsgHasher.From(@meta);
+  a := '1';
+  b := '1';
+  c := 'asd456';
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+  a := '12';
+  b := '12';
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+  a := '123';
+  b := '123';
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+end;
+
+procedure TsgHasherTest.TestString;
+var
+  hasher: TsgHasher;
+  meta: TsgItemMeta;
+  a, b, c: string;
+begin
+  meta.Init<string>;
+  hasher := TsgHasher.From(@meta);
+  a := '123';
+  b := '123';
+  c := 'asd456';
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+end;
+
+procedure TsgHasherTest.TestWString;
+var
+  hasher: TsgHasher;
+  meta: TsgItemMeta;
+  a, b, c: WideString;
+begin
+  meta.Init<WideString>;
+  hasher := TsgHasher.From(@meta);
+  a := '123';
+  b := '123';
+  c := 'asd456';
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+end;
+
+procedure TsgHasherTest.TestAnsiString;
+var
+  hasher: TsgHasher;
+  meta: TsgItemMeta;
+  a, b, c: AnsiString;
+begin
+  meta.Init<AnsiString>;
+  hasher := TsgHasher.From(@meta);
+  a := '123';
+  b := '123';
+  Check(hasher.Equals(@a, @b));
+  Check(not hasher.Equals(@a, @c));
+  Check(hasher.GetHash(@b) <> 0);
+  Check(hasher.GetHash(@c) <> 0);
+end;
+
+{$EndRegion}
+
+{$Region 'TsgHashMapTest'}
+
+function VectorHash(const Value: PByte): Cardinal;
+begin
+  Result := PVector(Value)^.Hash;
 end;
 
 function VectorEquals(A, B: Pointer): Boolean;
@@ -4206,22 +4376,25 @@ begin
   Result := TVector(A^).Equals(TVector(B^));
 end;
 
-procedure TestTsgHashMap.SetUp;
 var
-  Hash: THashProc;
-  Equals: TEqualsFunc;
+  VectorHasher: TsgHasher;
+
+procedure TsgHashMapTest.SetUp;
+const
+  Comparer: TComparer = (
+    Equals: VectorEquals;
+    Hash: VectorHash);
 begin
-  Hash := VectorHash;
-  Equals := VectorEquals;
-  Map := TsgHashMap<TVector, Integer>.From(300, Hash, Equals, nil);
+  VectorHasher := TsgHasher.From(Comparer);
+  Map := TsgHashMap<TVector, Integer>.From(300, @VectorHasher, nil);
 end;
 
-procedure TestTsgHashMap.TearDown;
+procedure TsgHashMapTest.TearDown;
 begin
   Map.Free;
 end;
 
-procedure TestTsgHashMap.GenPair(i: Integer; var pair: TsgPair<TVector, Integer>);
+procedure TsgHashMapTest.GenPair(i: Integer; var pair: TsgPair<TVector, Integer>);
 begin
   case i mod 5 of
     0: pair.Key := TVector.From(i, i + 0, 0);
@@ -4233,11 +4406,23 @@ begin
   pair.Value := i;
 end;
 
-procedure TestTsgHashMap.TestInsert;
+procedure TsgHashMapTest.TestTemporaryPair;
+var
+  pair, a: TsgHashMap<TVector, Integer>.PPair;
+begin
+  pair := Map.GetTemporaryPair;
+  GenPair(1, pair^);
+  a := Map.Insert(pair^);
+  CheckTrue(a <> nil);
+  CheckTrue(pair.Key.Equals(a.Key));
+  CheckTrue(pair.Value = a.Value);
+end;
+
+procedure TsgHashMapTest.TestInsert;
 var
   i: Integer;
   pair, t, r: TsgPair<TVector, Integer>;
-  a, b: TsgHashMap<TVector, Integer>.PMapPair;
+  a, b: TsgHashMap<TVector, Integer>.PPair;
 begin
   for i := 0 to 10000 do
   begin
@@ -4261,10 +4446,51 @@ begin
   end;
 end;
 
-procedure TestTsgHashMap.TestFind;
+procedure TsgHashMapTest.TestInsertOrUpdate;
+var
+  i: Integer;
+  pair, t, r: TsgPair<TVector, Integer>;
+  a, b: TsgHashMap<TVector, Integer>.PPair;
+begin
+  for i := 0 to 100 do
+  begin
+    // insert
+    GenPair(i, pair);
+    t := pair;
+    a := Map.InsertOrAssign(pair);
+    CheckTrue(a <> nil);
+    r.Key := a.Key;
+    r.Value := a.Value;
+    CheckTrue(r.Key.Equals(t.Key));
+    CheckTrue(r.Value = i);
+
+    // find
+    b := Map.Find(pair.Key);
+    CheckTrue(b <> nil);
+    r.Key := b.Key;
+    r.Value := b.Value;
+    CheckTrue(r.Key.Equals(t.Key));
+    CheckTrue(r.Value = i);
+  end;
+  for i := 0 to 100 do
+  begin
+    // insert
+    GenPair(i, pair);
+    pair.Value := i + 100;
+    t := pair;
+    a := Map.InsertOrAssign(pair);
+    CheckTrue(a <> nil);
+    r.Key := a.Key;
+    r.Value := a.Value;
+    CheckTrue(r.Key.Equals(t.Key));
+    CheckTrue(r.Value = i + 100);
+  end;
+end;
+
+procedure TsgHashMapTest.TestFind;
 var
   i, j: Integer;
-  r: TsgHashMap<TVector, Integer>.PMapPair;
+  r: TsgHashMap<TVector, Integer>.PPair;
   pair: THashMapPair;
 begin
   TestInsert;
@@ -4276,11 +4502,11 @@ begin
   CheckTrue(i = j);
 end;
 
-procedure TestTsgHashMap.TestPairIterator;
+procedure TsgHashMapTest.TestPairIterator;
 var
   i: Integer;
   pair, t, r: THashMapPair;
-  a, b: TsgHashMap<TVector, Integer>.PMapPair;
+  a, p: TsgHashMap<TVector, Integer>.PPair;
   it: TsgHashMapIterator<TVector, Integer>;
   key: TVector;
   value: Integer;
@@ -4300,25 +4526,28 @@ begin
   it := Map.Begins;
   while it <> Map.Ends do
   begin
+    p := it.GetPair;
     key := it.GetKey^;
     value := it.GetValue^;
+    CheckTrue(key.Equals(p.Key));
+    CheckTrue(value = p.Value);
     it.Next;
     Inc(i);
   end;
   CheckTrue(10001 = i);
 end;
 
-procedure TestTsgHashMap.TestKeyIterator;
+procedure TsgHashMapTest.TestKeyIterator;
 begin
 end;
 
-procedure TestTsgHashMap.TestValuesIterator;
+procedure TsgHashMapTest.TestValuesIterator;
 begin
 end;
 
 {$EndRegion}
 
-{$Region 'TestTsgMap'}
+{$Region 'TsgMapTest'}
 
 procedure ClearNode(P: Pointer);
 var
@@ -4328,17 +4557,17 @@ begin
   Ptr.k.Clear;
 end;
 
-procedure TestTsgMap.SetUp;
+procedure TsgMapTest.SetUp;
 begin
   FMap := TsgMap<TPerson, Integer>.From(PersonCompare, ClearNode);
 end;
 
-procedure TestTsgMap.TearDown;
+procedure TsgMapTest.TearDown;
 begin
   FMap.Free;
 end;
 
-procedure TestTsgMap.TestFind;
+procedure TsgMapTest.TestFind;
 var
   i: Integer;
   it: TsgMapIterator<TPerson, Integer>;
@@ -4375,7 +4604,7 @@ begin
   CheckTrue(it = FMap.Ends);
 end;
 
-procedure TestTsgMap.CheckNode(p: TsgMapIterator<TPerson, Integer>.PNode);
+procedure TsgMapTest.CheckNode(p: TsgMapIterator<TPerson, Integer>.PNode);
 var
   r: TMapPair;
 begin
@@ -4384,7 +4613,7 @@ begin
   Inc(nn)
 end;
 
-procedure TestTsgMap.TestIterator;
+procedure TsgMapTest.TestIterator;
 var
   i: Integer;
   it: TsgMapIterator<TPerson, Integer>;
@@ -4416,7 +4645,7 @@ end;
 
 {$EndRegion}
 
-{$Region 'TestTsgSet'}
+{$Region 'TsgSetTest'}
 
 procedure ClearSetNode(P: Pointer);
 var
@@ -4426,17 +4655,17 @@ begin
   Ptr.k.Clear;
 end;
 
-procedure TestTsgSet.SetUp;
+procedure TsgSetTest.SetUp;
 begin
   FSet.Init(PersonCompare, ClearSetNode);
 end;
 
-procedure TestTsgSet.TearDown;
+procedure TsgSetTest.TearDown;
 begin
   FSet.Free;
 end;
 
-procedure TestTsgSet.TestFind;
+procedure TsgSetTest.TestFind;
 var
   i: Integer;
   it: TsgSetIterator<TPerson>;
@@ -4457,7 +4686,7 @@ begin
   CheckTrue(it = FSet.Ends);
 end;
 
-procedure TestTsgSet.CheckSetNode(p: TsgSetIterator<TPerson>.PNode);
+procedure TsgSetTest.CheckSetNode(p: TsgSetIterator<TPerson>.PNode);
 var
   r: TPerson;
   id: string;
@@ -4468,7 +4697,7 @@ begin
   Inc(snn)
 end;
 
-procedure TestTsgSet.TestIterator;
+procedure TsgSetTest.TestIterator;
 var
   i: Integer;
   it: TsgSetIterator<TPerson>;
@@ -4573,11 +4802,12 @@ end;
 
 initialization
 
-  RegisterTest(TsgRecordListTest.Suite);
-  RegisterTest(TestTsgMap.Suite);
-  RegisterTest(TestTsgSet.Suite);
+  RegisterTest(TsgHasherTest.Suite);
+  RegisterTest(TsgHashMapTest.Suite);
 
-  RegisterTest(TestTsgHashMap.Suite);
+  RegisterTest(TsgRecordListTest.Suite);
+  RegisterTest(TsgMapTest.Suite);
+  RegisterTest(TsgSetTest.Suite);
 
   // Oz.SGL.HandleManager
   RegisterTest(TsgHandleManagerTest.Suite);
